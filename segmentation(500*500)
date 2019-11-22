@@ -1,0 +1,110 @@
+clear
+clc
+codefolder='C:\Users\zw_qiu\Desktop\cell_extraction\image_patch_extraction'; % the directory including matlab codes 
+addpath(genpath(codefolder));%genpath表示：当前文件夹下的所有文件夹； addpath表示：将这么子文件夹都包含进调用函数的目录
+currjpg='t1815853_2.jpg';
+rhead=bfGetReader(currjpg);
+%% 提取图像轮廓，提取图像边缘
+I = imread('t1815853_2.jpg');
+%c = im2bw(I,graythresh(I));%将图像转换为二值图像，graythresh计算灰度门槛,Ostu法
+c = im2bw(I,0.90);%自定阈值  前景色为蓝色0，背景色为黄色1
+%c=logical(ones(size(c))-double(c));%前景色为黄色1，背景色为蓝色0
+imgMarker=c;
+%imgMarker = flipud(c);   %实现矩阵c上下翻转,和原图像上下翻转
+%% 膨胀与腐蚀
+diskSize=5;
+disk1=strel('disk',diskSize);% 运用各种形状和大小构造元素，圆形，半径为DiskSize
+imgMarker=imdilate(imgMarker,disk1);%膨胀操作
+diskSize2=15;
+disk2=strel('disk',diskSize2);% 运用各种形状和大小构造元素，圆形，半径为DiskSize
+imgMarker=imerode(imgMarker,disk2);%腐蚀操作
+diskSize3=10;
+disk3=strel('disk',diskSize3);% 运用各种形状和大小构造元素，圆形，半径为DiskSize
+imgMarker=imdilate(imgMarker,disk3);%膨胀操作
+m1=imgMarker;
+figure(2)
+subplot(2,2,1)
+imagesc(m1)
+%% 连通区域操作
+%删除小面积对象
+%(1)BW2=bwareaopen(BW,P,conn);
+%算法：
+L=bwlabeln(m1,8);%寻找连通区域A scalar connectivity specifier must be 1, 4, 6, 8, 18 or 26
+S=regionprops(L,'Area','Centroid','PixelList');%连通区域的面积、质心，存储连通区域的像素坐标
+m2=ismember(L,find([S.Area]>=3000));%删除面积小于P的对象
+S2=regionprops(m2,'Area','Centroid','PixelList');%连通区域的面积、质心，存储连通区域的像素坐标
+Area = [S2.Area].';
+del=find(Area>2*10^5);%删除空白区域
+%(2)B=bwboundaries(BW,conn);%存储轮廓对象，conn默认为8邻域
+%m3=bwareaopen(m2,300,8);
+subplot(2,2,2)
+imagesc(m2);
+%% 提取小patch
+%Centroid = {S2.Centroid}.';建立胞组
+%S22 = table({S2.Centroid}.', 'VariableNames', {'Centroid'});%建立列表类型
+coords=[S2.Centroid];
+numcens=length(coords)/2-length(del);
+xcentmp=floor(coords(:,1:2:end)');
+ycentmp=floor(coords(:,2:2:end)');
+xcentmp(del)=[];
+ycentmp(del)=[];
+[xcens,indx]=sort(xcentmp);
+ycens=ycentmp(indx);
+hold on
+%图是从左上到右下画，左上角为原点，→x轴方向，↓y轴方向
+for i = 1:numcens
+    plot(xcens(i),ycens(i),'+r')
+end
+hold off
+%1000*1000子图各个端点的坐标
+width=500;
+lenth=width;
+[nrow,ncol]=size(c);%行数nrow,列数ncol
+
+for i=1:numcens
+    if xcens(i)<lenth/2 || ycens(i)<width/2 || xcens(i)>ncol-lenth/2 || ycens(i)>nrow-width/2
+       continue;
+    end
+    minrow=ycens(i)-width/2+1;%左上角行索引
+    mincol=xcens(i)-lenth/2+1;%左上角列索引
+    maxrow=ycens(i)+width/2;%右下角行索引
+    maxcol=xcens(i)+lenth/2;%右下角列索引
+    coordpatch{i}=[mincol maxcol;minrow maxrow];
+end 
+idx=find(cellfun(@(x)~isempty(x),coordpatch)==1);%非空coordpath索引
+xcen=xcens(idx);
+ycen=ycens(idx);
+coordpatchs=coordpatch(idx);
+
+for k=1
+    mincol=coordpatchs{k}(1,1);
+    minrow=coordpatchs{k}(2,1);
+    cropRegionImg(:,:,1)=bfGetPlane(rhead,1,mincol,minrow,lenth,width);
+    cropRegionImg(:,:,2)=bfGetPlane(rhead,2,mincol,minrow,lenth,width);
+    cropRegionImg(:,:,3)=bfGetPlane(rhead,3,mincol,minrow,lenth,width);
+    imwrite(cropRegionImg,['C:\Users\zw_qiu\Desktop\cell_extraction\patch_extraction_results\t1815853_2_500x500\','patch',num2str(k),'.jpg']);
+end    
+k2=1;
+for k=2:size(idx,2)
+    for m=1:k-1
+        pointin=0;
+        pointout=0;
+        if xcen(k)>coordpatchs{m}(1,1)&&xcen(k)<coordpatchs{m}(1,2)&&ycen(k)>coordpatchs{m}(2,1)&&ycen(k)<coordpatchs{m}(2,2)
+           pointin=pointin+1;
+        else
+           pointout=pointout+1;
+        end
+    end
+    %keyboard
+    if pointin~=0
+       continue;
+    end
+    k2=k2+1;
+    mincol=coordpatchs{k}(1,1);        
+    minrow=coordpatchs{k}(2,1);
+    cropRegionImg(:,:,1)=bfGetPlane(rhead,1,mincol,minrow,lenth,width);
+    cropRegionImg(:,:,2)=bfGetPlane(rhead,2,mincol,minrow,lenth,width);
+    cropRegionImg(:,:,3)=bfGetPlane(rhead,3,mincol,minrow,lenth,width);
+    imwrite(cropRegionImg,['C:\Users\zw_qiu\Desktop\cell_extraction\patch_extraction_results\t1815853_2_500x500\','patch',num2str(k2),'.jpg']);
+
+end
